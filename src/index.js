@@ -1,76 +1,14 @@
-import makeWASocket, {
-  useMultiFileAuthState,
-  DisconnectReason
-} from "@whiskeysockets/baileys";
-import P from "pino";
-import qrcode from "qrcode-terminal";
-import { handleCommand } from "./commands.js";
+import { startSession } from "./sessionManager.js";
+import "./server.js";
 
-async function startBot() {
-  console.log("🚀 Starting Presido Bot...");
+const defaultUserId = process.env.PRESIDO_DEFAULT_USER_ID;
 
-  const { state, saveCreds } =
-    await useMultiFileAuthState("auth_info_baileys");
-
-  const sock = makeWASocket({
-    auth: state,
-    logger: P({ level: "silent" }),
-    printQRInTerminal: false
+if (defaultUserId) {
+  startSession(defaultUserId).catch((error) => {
+    console.error("❌ Failed to start default WhatsApp session:", error);
+    process.exit(1);
   });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
-    if (qr) {
-      console.log("\n📱 Scan this QR code with WhatsApp:\n");
-      qrcode.generate(qr, { small: true });
-    }
-
-    if (connection === "open") {
-      console.log("✅ Presido Bot connected to WhatsApp.");
-    }
-
-    if (connection === "close") {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-
-      if (statusCode === DisconnectReason.loggedOut) {
-        console.log("❌ WhatsApp session logged out.");
-        return;
-      }
-
-      console.log("⚠️ Connection closed. Reconnecting...");
-      startBot().catch(console.error);
-    }
-  });
-
-  sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify") return;
-
-    for (const message of messages) {
-      try {
-        if (!message?.message || message.key.fromMe) continue;
-
-        const text =
-          message.message.conversation ||
-          message.message.extendedTextMessage?.text ||
-          "";
-
-        if (!text.trim()) continue;
-
-        const source = message.key.remoteJid?.endsWith("@g.us")
-          ? "group"
-          : "private";
-
-        console.log(`📩 [${source}] ${text}`);
-        await handleCommand(sock, message, text.trim());
-      } catch (error) {
-        console.error("Message handling error:", error);
-      }
-    }
-  });
+} else {
+  console.log("ℹ️ No default WhatsApp session configured.");
+  console.log("Use the dashboard to create a user session.");
 }
-
-startBot().catch((error) => {
-  console.error("❌ Failed to start bot:", error);
-  process.exit(1);
-});
