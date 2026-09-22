@@ -2,18 +2,9 @@
 
 A multi-user WhatsApp bot platform built with Node.js and Baileys.
 
-## Multi-user sessions
+## Accounts
 
-Each connected WhatsApp account gets its own isolated authentication directory:
-
-```
-sessions/
-  user_001/
-  user_002/
-  user_003/
-```
-
-One session can reconnect without affecting the others.
+Users create an account with a **username and password**, then connect their own WhatsApp account. Each user's WhatsApp credentials are isolated in their own session directory.
 
 ## Setup
 
@@ -22,41 +13,24 @@ npm install
 npm start
 ```
 
-By default the local connection dashboard is available at:
+Open `http://127.0.0.1:3000`, create an account, log in, and click **Connect WhatsApp**.
 
-```
-http://127.0.0.1:3000
-```
+Passwords are stored as salted scrypt hashes, never plaintext. Dashboard authentication uses an HTTP-only session cookie. User data and WhatsApp credentials are excluded from Git.
 
-Enter a unique user ID, click **Connect WhatsApp**, and scan the displayed QR code with:
+For public deployment, use HTTPS and set `COOKIE_SECURE=true`.
 
-**WhatsApp → Settings → Linked Devices → Link a Device**
+## Bot commands
 
-For a production deployment, put authentication in front of the dashboard/API before exposing it to the public internet. The current dashboard is intentionally a local development interface.
-
-### Optional default session
-
-Set `PRESIDO_DEFAULT_USER_ID` to automatically start one session when the server starts:
-
-```bash
-PRESIDO_DEFAULT_USER_ID=owner_001 npm start
-```
-
-## Current commands
-
-- `!ping` — Check that the bot is online.
-- `!menu` — Show available commands.
-- `!help` — Show help.
-- `!owner` — Check whether the sender is a configured bot owner.
-- `!admincheck` — Check group admin status.
-- `!groupinfo` — Show group information to group admins or the bot owner.
+- `!ping`
+- `!menu`
+- `!help`
+- `!owner`
+- `!admincheck`
+- `!groupinfo`
 
 ## Architecture
 
-- `src/sessionManager.js` — Creates and manages isolated WhatsApp sessions.
-- `src/server.js` — Local web dashboard and session API.
-- `src/index.js` — Application entry point.
-- `src/commands.js` — Bot command handling.
-- `src/config.js` — Bot configuration and owner settings.
-
-Session credentials are stored under `sessions/` and excluded from Git.
+- `src/auth.js` — username/password authentication.
+- `src/sessionManager.js` — isolated WhatsApp sessions.
+- `src/server.js` — authenticated web dashboard/API.
+- `src/index.js` — application entry point.
