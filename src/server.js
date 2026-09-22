@@ -5,9 +5,9 @@ import { registerUser, loginUser, getUserFromToken, logoutUser } from "./auth.js
 import { startSession, stopSession, getSessionStatus } from "./sessionManager.js";
 
 const port = Number(process.env.PORT || 3000);
-const host = process.env.HOST || "127.0.0.1";
+const host = process.env.HOST || "0.0.0.0";
 const trustProxy = process.env.TRUST_PROXY === "true";
-const secureCookies = process.env.COOKIE_SECURE === "true";
+const secureCookies = process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production";
 const dashboard = path.resolve("public/index.html");
 
 function sendJson(res, status, data) {
@@ -53,6 +53,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url.startsWith("/api/auth/") && !rateLimit("auth:" + key, 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: "Too many authentication attempts. Try again later." });
     if (req.method === "POST" && req.url.startsWith("/api/") && !rateLimit("api:" + key, 120, 60 * 1000)) return sendJson(res, 429, { error: "Too many requests. Try again shortly." });
     const url = new URL(req.url, "http://" + (req.headers.host || "localhost"));
+    if (req.method === "GET" && url.pathname === "/health") {
+      return sendJson(res, 200, { status: "ok", service: "presido-bot" });
+    }
     if (req.method === "GET" && url.pathname === "/") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       return res.end(await readFile(dashboard, "utf8"));
