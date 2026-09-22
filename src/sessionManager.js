@@ -1,6 +1,5 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers } from "@whiskeysockets/baileys";
 import P from "pino";
-import qrcode from "qrcode";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { handleCommand } from "./commands.js";
@@ -14,37 +13,85 @@ function normalizeUserId(userId) {
   return userId;
 }
 function getSessionPath(userId) { return path.join(SESSION_ROOT, normalizeUserId(userId)); }
+
 export function getSessionStatus(userId) {
   const session = sessions.get(userId);
-  if (!session) return { userId, status: "stopped", connected: false, hasQr: false };
-  return { userId, status: session.status, connected: session.status === "connected", hasQr: Boolean(session.qr), qr: session.qr || null, jid: session.jid || null };
+  if (!session) return { userId, status: "stopped", connected: false, hasPairingCode: false, pairingCode: null, jid: null };
+  return {
+    userId,
+    status: session.status,
+    connected: session.status === "connected",
+    hasPairingCode: Boolean(session.pairingCode),
+    pairingCode: session.pairingCode || null,
+    jid: session.jid || null
+  };
 }
-export async function startSession(userId) {
+
+export async function startSession(userId, phoneNumber) {
   userId = normalizeUserId(userId);
   const existing = sessions.get(userId);
-  if (existing?.status === "connected" || existing?.status === "connecting") return getSessionStatus(userId);
+  if (existing?.status === "connected" || existing?.status === "connecting" || existing?.status === "awaiting_pairing") return getSessionStatus(userId);
+
+  const digits = String(phoneNumber || "").replace(/\D/g, "");
+  if (!/^\d{8,15}$/.test(digits)) throw new Error("Enter a valid WhatsApp number with country code, digits only.");
+  
   await mkdir(getSessionPath(userId), { recursive: true });
   const { state, saveCreds } = await useMultiFileAuthState(getSessionPath(userId));
-  const session = { userId, status: "connecting", qr: null, jid: null, sock: null };
+  const session = { userId, status: "connecting", pairingCode: null, jid: null, sock: null };
   sessions.set(userId, session);
-  const sock = makeWASocket({ auth: state, logger: P({ level: "silent" }), printQRInTerminal: false });
+
+  const sock = makeWASocket({
+    auth: state,
+    logger: P({ level: "silent" }),
+    printQRInTerminal: false,
+    browser: Browsers.macOS("Chrome")
+  });
   session.sock = sock;
   sock.ev.on("creds.update", saveCreds);
-  sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
-    if (qr) {
-      try { session.qr = await qrcode.toDataURL(qr); session.status = "awaiting_qr"; console.log(`📱 [${userId}] QR code ready.`); }
-      catch (error) { console.error(`[${userId}] Failed to generate QR:`, error); }
+
+  sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
+    if (connection === "connecting" && !state.creds.registered && !session.pairingCode) {
+      try {
+        session.status = "awaiting_pairing";
+        session.pairingCode = await sock.requestPairingCode(digits);
+        console.log(`📱 [${userId}] Pairing code ready: ${session.pairingCode}`);
+      } catch (error) {
+        session.status = "pairing_failed";
+        session.pairingCode = null;
+        console.error(`[${userId}] Pairing code request failed:`, error);
+      }
     }
-    if (connection === "open") { session.status = "connected"; session.qr = null; session.jid = sock.user?.id || null; console.log(`✅ [${userId}] WhatsApp connected: ${session.jid}`); }
+
+    if (connection === "open") {
+      session.status = "connected";
+      session.pairingCode = null;
+      session.jid = sock.user?.id || null;
+      console.log(`✅ [${userId}] WhatsApp connected: ${session.jid}`);
+    }
+
     if (connection === "close") {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      if (statusCode === DisconnectReason.loggedOut) { session.status = "logged_out"; session.qr = null; session.jid = null; session.sock = null; console.log(`❌ [${userId}] WhatsApp session logged out.`); return; }
-      session.status = "reconnecting"; session.qr = null; session.jid = null; session.sock = null;
+      if (statusCode === DisconnectReason.loggedOut) {
+        session.status = "logged_out";
+        session.pairingCode = null;
+        session.jid = null;
+        session.sock = null;
+        console.log(`❌ [${userId}] WhatsApp session logged out.`);
+        return;
+      }
+      session.status = "reconnecting";
+      session.pairingCode = null;
+      session.jid = null;
+      session.sock = null;
       if (reconnectTimers.has(userId)) return;
-      const timer = setTimeout(() => { reconnectTimers.delete(userId); startSession(userId).catch((error) => console.error(`[${userId}] Reconnect failed:`, error)); }, 3000);
+      const timer = setTimeout(() => {
+        reconnectTimers.delete(userId);
+        startSession(userId, digits).catch((error) => console.error(`[${userId}] Reconnect failed:`, error));
+      }, 3000);
       reconnectTimers.set(userId, timer);
     }
   });
+
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
     for (const message of messages) {
@@ -58,8 +105,10 @@ export async function startSession(userId) {
       } catch (error) { console.error(`[${userId}] Message handling error:`, error); }
     }
   });
+
   return getSessionStatus(userId);
 }
+
 export async function stopSession(userId, { logout = false } = {}) {
   userId = normalizeUserId(userId);
   const session = sessions.get(userId);
@@ -69,4 +118,5 @@ export async function stopSession(userId, { logout = false } = {}) {
   sessions.delete(userId);
   return getSessionStatus(userId);
 }
+
 export function listSessions() { return [...sessions.keys()].map(getSessionStatus); }
