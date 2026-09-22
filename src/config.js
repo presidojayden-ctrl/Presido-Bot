@@ -2,8 +2,6 @@ export const config = {
   botName: "Presido Bot",
   prefix: "!",
   owners: [
-    // Add the WhatsApp number(s) that should have bot-owner privileges.
-    // Format: country code + number, without + or spaces.
     "234XXXXXXXXXX"
   ]
 };
