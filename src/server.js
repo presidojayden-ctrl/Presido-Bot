@@ -6,6 +6,7 @@ import { startSession, stopSession, getSessionStatus } from "./sessionManager.js
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "127.0.0.1";
+const trustProxy = process.env.TRUST_PROXY === "true";
 const secureCookies = process.env.COOKIE_SECURE === "true";
 const dashboard = path.resolve("public/index.html");
 
@@ -18,6 +19,16 @@ function getCookie(req, name) {
   const item = cookies.find((v) => v.startsWith(name + "="));
   return item ? decodeURIComponent(item.slice(name.length + 1)) : null;
 }
+const rateBuckets = new Map();
+function rateLimit(key, limit, windowMs) {
+  const now = Date.now();
+  const bucket = rateBuckets.get(key) || { start: now, count: 0 };
+  if (now - bucket.start >= windowMs) { bucket.start = now; bucket.count = 0; }
+  bucket.count += 1;
+  rateBuckets.set(key, bucket);
+  return bucket.count <= limit;
+}
+function clientKey(req) { return trustProxy ? String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown" : req.socket.remoteAddress || "unknown"; }
 function setAuthCookie(res, token) {
   const secure = secureCookies ? "; Secure" : "";
   res.setHeader("Set-Cookie", "presido_session=" + token + "; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800" + secure);
@@ -38,6 +49,9 @@ async function readBody(req) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    const key = clientKey(req);
+    if (req.method === "POST" && req.url.startsWith("/api/auth/") && !rateLimit("auth:" + key, 20, 15 * 60 * 1000)) return sendJson(res, 429, { error: "Too many authentication attempts. Try again later." });
+    if (req.method === "POST" && req.url.startsWith("/api/") && !rateLimit("api:" + key, 120, 60 * 1000)) return sendJson(res, 429, { error: "Too many requests. Try again shortly." });
     const url = new URL(req.url, "http://" + (req.headers.host || "localhost"));
     if (req.method === "GET" && url.pathname === "/") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
