@@ -1,6 +1,4 @@
 import http from "node:http";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { registerUser, loginUser, getUserFromToken, logoutUser } from "./auth.js";
 import { startSession, stopSession, getSessionStatus } from "./sessionManager.js";
 
@@ -8,7 +6,6 @@ const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
 const trustProxy = process.env.TRUST_PROXY === "true";
 const secureCookies = process.env.COOKIE_SECURE === "true" || process.env.NODE_ENV === "production";
-const dashboard = path.resolve("public/index.html");
 
 function sendJson(res, status, data) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
@@ -57,8 +54,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { status: "ok", service: "presido-bot" });
     }
     if (req.method === "GET" && url.pathname === "/") {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-      return res.end(await readFile(dashboard, "utf8"));
+      return sendJson(res, 200, { service: "presido-bot", status: "ok", frontend: "netlify" });
     }
     if (req.method === "POST" && url.pathname === "/api/auth/register") {
       const { username, password } = await readBody(req);
