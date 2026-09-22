@@ -2,6 +2,7 @@ import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers } from 
 import P from "pino";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import QRCode from "qrcode";
 import { handleCommand } from "./commands.js";
 
 const sessions = new Map();
@@ -16,13 +17,14 @@ function getSessionPath(userId) { return path.join(SESSION_ROOT, normalizeUserId
 
 export function getSessionStatus(userId) {
   const session = sessions.get(userId);
-  if (!session) return { userId, status: "stopped", connected: false, hasPairingCode: false, pairingCode: null, jid: null };
+  if (!session) return { userId, status: "stopped", connected: false, hasPairingCode: false, pairingCode: null, qrCode: null, jid: null };
   return {
     userId,
     status: session.status,
     connected: session.status === "connected",
     hasPairingCode: Boolean(session.pairingCode),
     pairingCode: session.pairingCode || null,
+    qrCode: session.qrCode || null,
     jid: session.jid || null
   };
 }
@@ -37,7 +39,7 @@ export async function startSession(userId, phoneNumber) {
   
   await mkdir(getSessionPath(userId), { recursive: true });
   const { state, saveCreds } = await useMultiFileAuthState(getSessionPath(userId));
-  const session = { userId, status: "connecting", pairingCode: null, jid: null, sock: null };
+  const session = { userId, status: "connecting", pairingCode: null, qrCode: null, jid: null, sock: null, pairingRequested: false };
   sessions.set(userId, session);
 
   const sock = makeWASocket({
@@ -49,14 +51,36 @@ export async function startSession(userId, phoneNumber) {
   session.sock = sock;
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("connection.update", async ({ connection, lastDisconnect }) => {
-    if (connection === "connecting" && !state.creds.registered && !session.pairingCode) {
+  sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
+    if (qr) {
       try {
+        session.qrCode = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
+        session.status = session.pairingCode ? "awaiting_pairing" : "awaiting_qr";
+      } catch (error) {
+        console.error(`[${userId}] QR generation failed:`, error);
+      }
+
+      if (!state.creds.registered && !session.pairingRequested) {
+        session.pairingRequested = true;
+        try {
+          session.pairingCode = await sock.requestPairingCode(digits);
+          session.status = "awaiting_pairing";
+          console.log(`📱 [${userId}] Pairing code ready: ${session.pairingCode}`);
+        } catch (error) {
+          session.pairingCode = null;
+          session.status = session.qrCode ? "awaiting_qr" : "pairing_failed";
+          console.error(`[${userId}] Pairing code request failed:`, error);
+        }
+      }
+    }
+    if (connection === "connecting" && !state.creds.registered && !session.qrCode && !session.pairingRequested) {
+      try {
+        session.pairingRequested = true;
         session.status = "awaiting_pairing";
         session.pairingCode = await sock.requestPairingCode(digits);
         console.log(`📱 [${userId}] Pairing code ready: ${session.pairingCode}`);
       } catch (error) {
-        session.status = "pairing_failed";
+        session.status = session.qrCode ? "awaiting_qr" : "pairing_failed";
         session.pairingCode = null;
         console.error(`[${userId}] Pairing code request failed:`, error);
       }
@@ -65,6 +89,7 @@ export async function startSession(userId, phoneNumber) {
     if (connection === "open") {
       session.status = "connected";
       session.pairingCode = null;
+      session.qrCode = null;
       session.jid = sock.user?.id || null;
       console.log(`✅ [${userId}] WhatsApp connected: ${session.jid}`);
     }
@@ -74,6 +99,7 @@ export async function startSession(userId, phoneNumber) {
       if (statusCode === DisconnectReason.loggedOut) {
         session.status = "logged_out";
         session.pairingCode = null;
+        session.qrCode = null;
         session.jid = null;
         session.sock = null;
         console.log(`❌ [${userId}] WhatsApp session logged out.`);
@@ -81,6 +107,7 @@ export async function startSession(userId, phoneNumber) {
       }
       session.status = "reconnecting";
       session.pairingCode = null;
+      session.qrCode = null;
       session.jid = null;
       session.sock = null;
       if (reconnectTimers.has(userId)) return;
