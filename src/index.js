@@ -1,14 +1,40 @@
+import { readdir } from "node:fs/promises";
+import path from "node:path";
 import { startSession } from "./sessionManager.js";
 import "./server.js";
 
+const SESSION_ROOT = path.resolve("sessions");
 const defaultUserId = process.env.PRESIDO_DEFAULT_USER_ID;
 
-if (defaultUserId) {
-  startSession(defaultUserId).catch((error) => {
-    console.error("❌ Failed to start default WhatsApp session:", error);
-    process.exit(1);
-  });
-} else {
-  console.log("ℹ️ No default WhatsApp session configured.");
-  console.log("Use the dashboard to create a user session.");
+async function restoreSessions() {
+  let restored = 0;
+
+  try {
+    const entries = await readdir(SESSION_ROOT, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !/^[a-zA-Z0-9_-]{1,64}$/.test(entry.name)) {
+        continue;
+      }
+
+      await startSession(entry.name);
+      restored += 1;
+    }
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+
+  if (defaultUserId) {
+    await startSession(defaultUserId);
+  }
+
+  if (restored === 0 && !defaultUserId) {
+    console.log("ℹ️ No saved WhatsApp sessions found.");
+    console.log("Use the dashboard to create a user session.");
+  }
 }
+
+restoreSessions().catch((error) => {
+  console.error("❌ Failed to restore WhatsApp sessions:", error);
+  process.exit(1);
+});
