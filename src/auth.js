@@ -4,7 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const scrypt = promisify(scryptCallback);
-const DATA_DIR = path.resolve("data");
+const DATA_DIR = path.resolve(process.env.PRESIDO_DATA_DIR || "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const sessions = new Map();
 
