@@ -24,7 +24,11 @@ async function restoreSessions() {
     if (error.code !== "ENOENT") throw error;
   }
 
-  if (defaultUserId) {
+  if (defaultUserId && !/^[a-zA-Z0-9_-]{1,64}$/.test(defaultUserId)) {
+    throw new Error("PRESIDO_DEFAULT_USER_ID must contain only letters, numbers, hyphens or underscores.");
+  }
+
+  if (defaultUserId && !entries.some((entry) => entry.isDirectory() && entry.name === defaultUserId)) {
     await startSession(defaultUserId);
   }
 
