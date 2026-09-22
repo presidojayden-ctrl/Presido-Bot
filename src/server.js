@@ -79,7 +79,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/whatsapp/connect") {
       const auth = requireAuth(req, res); if (!auth) return;
-      return sendJson(res, 200, await startSession(auth.username));
+      const { phoneNumber } = await readBody(req);
+      return sendJson(res, 200, await startSession(auth.username, phoneNumber));
     }
     if (req.method === "GET" && url.pathname === "/api/whatsapp") {
       const auth = requireAuth(req, res); if (!auth) return;
