@@ -42,19 +42,40 @@ export async function handleCommand(sock, message, text) {
 
     case "menu":
     case "help":
-      await reply(`🤖 *${config.botName}*
+      await sock.sendMessage(jid, {
+        image: { url: "https://raw.githubusercontent.com/presidojayden-ctrl/Presido-Bot/main/web/presido-logo.png" },
+        caption: `╭━━━〔 🤖 ${config.botName} 〕━━━╮
+┃
+┃  👋 Welcome to *${config.botName}*
+┃  Your WhatsApp automation assistant.
+┃
+┃  🌐 Website
+┃  https://presidobot.netlify.app
+┃
+┃  📢 Channel
+┃  Not configured yet
+┃
+┃  ⚙️ Mode: Public
+┃  🧩 Version: ${config.version || "1.1.0"}
+┃
+╰━━━━━━━━━━━━━━━━━━━━━━╯
 
-General:
-!ping - Check if the bot is online
-!menu - Show commands
-!help - Show help
+📌 *Commands*
 
-Admin:
-!groupinfo - Show group information
-!admincheck - Check your group admin status
+General
+• !ping — Check if the bot is online
+• !menu — Show this menu
+• !help — Show this menu
 
-Owner:
-!owner - Check whether you are a bot owner`);
+Admin
+• !groupinfo — Show group information
+• !admincheck — Check your group admin status
+
+Owner
+• !owner — Check whether you are a bot owner
+
+💚 Powered by ${config.botName}`
+      }, { quoted: message });
       break;
 
     case "owner":
