@@ -1,109 +1,86 @@
 import http from "node:http";
-import { startSession, stopSession, getSessionStatus, listSessions } from "./sessionManager.js";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { registerUser, loginUser, getUserFromToken, logoutUser } from "./auth.js";
+import { startSession, stopSession, getSessionStatus } from "./sessionManager.js";
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "127.0.0.1";
+const secureCookies = process.env.COOKIE_SECURE === "true";
+const dashboard = path.resolve("public/index.html");
 
 function sendJson(res, status, data) {
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
-  });
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   res.end(JSON.stringify(data));
 }
-
-function sendHtml(res, html) {
-  res.writeHead(200, {
-    "Content-Type": "text/html; charset=utf-8",
-    "Cache-Control": "no-store"
-  });
-  res.end(html);
+function getCookie(req, name) {
+  const cookies = req.headers.cookie?.split(";").map((v) => v.trim()) || [];
+  const item = cookies.find((v) => v.startsWith(name + "="));
+  return item ? decodeURIComponent(item.slice(name.length + 1)) : null;
 }
-
-const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Presido Bot — WhatsApp Connect</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 20px; }
-    input, button { padding: 10px; font-size: 16px; }
-    button { cursor: pointer; }
-    #qr img { width: 280px; image-rendering: pixelated; }
-    .muted { color: #666; }
-  </style>
-</head>
-<body>
-  <h1>Presido Bot</h1>
-  <p class="muted">Create a session, then scan its WhatsApp QR code from Linked devices.</p>
-  <input id="userId" placeholder="user_001" autocomplete="off">
-  <button onclick="connect()">Connect WhatsApp</button>
-  <div id="status"></div>
-  <div id="qr"></div>
-  <script>
-    let timer;
-    async function connect() {
-      const userId = document.getElementById("userId").value.trim();
-      if (!userId) return;
-      document.getElementById("qr").innerHTML = "";
-      document.getElementById("status").textContent = "Starting session...";
-      await fetch("/api/sessions/" + encodeURIComponent(userId), { method: "POST" });
-      clearInterval(timer);
-      timer = setInterval(() => poll(userId), 1500);
-      poll(userId);
-    }
-    async function poll(userId) {
-      const response = await fetch("/api/sessions/" + encodeURIComponent(userId));
-      const data = await response.json();
-      document.getElementById("status").textContent =
-        "Status: " + data.status + (data.jid ? " — " + data.jid : "");
-      if (data.qr) {
-        document.getElementById("qr").innerHTML = "<p>Scan this QR:</p><img src='" + data.qr + "' alt='WhatsApp QR code'>";
-      } else if (data.status === "connected") {
-        document.getElementById("qr").innerHTML = "<p>✅ WhatsApp connected.</p>";
-        clearInterval(timer);
-      }
-    }
-  </script>
-</body>
-</html>`;
+function setAuthCookie(res, token) {
+  const secure = secureCookies ? "; Secure" : "";
+  res.setHeader("Set-Cookie", "presido_session=" + token + "; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800" + secure);
+}
+function clearAuthCookie(res) { res.setHeader("Set-Cookie", "presido_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"); }
+function requireAuth(req, res) {
+  const token = getCookie(req, "presido_session");
+  const username = getUserFromToken(token);
+  if (!username) { sendJson(res, 401, { error: "Authentication required." }); return null; }
+  return { username, token };
+}
+async function readBody(req) {
+  let body = "";
+  for await (const chunk of req) body += chunk;
+  if (body.length > 10000) throw new Error("Request body is too large.");
+  try { return JSON.parse(body || "{}"); } catch { throw new Error("Invalid JSON request."); }
+}
 
 const server = http.createServer(async (req, res) => {
   try {
-    const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-
+    const url = new URL(req.url, "http://" + (req.headers.host || "localhost"));
     if (req.method === "GET" && url.pathname === "/") {
-      return sendHtml(res, html);
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      return res.end(await readFile(dashboard, "utf8"));
     }
-
-    if (req.method === "GET" && url.pathname === "/api/sessions") {
-      return sendJson(res, 200, { sessions: listSessions() });
+    if (req.method === "POST" && url.pathname === "/api/auth/register") {
+      const { username, password } = await readBody(req);
+      const user = await registerUser(username, password);
+      const login = await loginUser(username, password);
+      setAuthCookie(res, login.token);
+      return sendJson(res, 201, user);
     }
-
-    const match = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
-
-    if (match && req.method === "GET") {
-      return sendJson(res, 200, getSessionStatus(decodeURIComponent(match[1])));
+    if (req.method === "POST" && url.pathname === "/api/auth/login") {
+      const { username, password } = await readBody(req);
+      const login = await loginUser(username, password);
+      setAuthCookie(res, login.token);
+      return sendJson(res, 200, { username: login.username });
     }
-
-    if (match && req.method === "POST") {
-      const userId = decodeURIComponent(match[1]);
-      const status = await startSession(userId);
-      return sendJson(res, 200, status);
+    if (req.method === "GET" && url.pathname === "/api/auth/me") {
+      const auth = requireAuth(req, res); if (!auth) return;
+      return sendJson(res, 200, { username: auth.username });
     }
-
-    if (match && req.method === "DELETE") {
-      const userId = decodeURIComponent(match[1]);
-      const status = await stopSession(userId, { logout: true });
-      return sendJson(res, 200, status);
+    if (req.method === "POST" && url.pathname === "/api/auth/logout") {
+      logoutUser(getCookie(req, "presido_session")); clearAuthCookie(res);
+      return sendJson(res, 200, { success: true });
     }
-
-    return sendJson(res, 404, { error: "Not found" });
+    if (req.method === "POST" && url.pathname === "/api/whatsapp/connect") {
+      const auth = requireAuth(req, res); if (!auth) return;
+      return sendJson(res, 200, await startSession(auth.username));
+    }
+    if (req.method === "GET" && url.pathname === "/api/whatsapp") {
+      const auth = requireAuth(req, res); if (!auth) return;
+      return sendJson(res, 200, getSessionStatus(auth.username));
+    }
+    if (req.method === "DELETE" && url.pathname === "/api/whatsapp") {
+      const auth = requireAuth(req, res); if (!auth) return;
+      return sendJson(res, 200, await stopSession(auth.username, { logout: true }));
+    }
+    return sendJson(res, 404, { error: "Not found." });
   } catch (error) {
-    return sendJson(res, 400, { error: error.message });
+    console.error(error);
+    return sendJson(res, 400, { error: error.message || "Request failed." });
   }
 });
 
-server.listen(port, host, () => {
-  console.log(`🌐 Presido Bot dashboard: http://${host}:${port}`);
-});
+server.listen(port, host, () => console.log("Presido Bot dashboard: http://" + host + ":" + port));
