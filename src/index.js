@@ -1,12 +1,23 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
+import makeWASocket, {
+  useMultiFileAuthState,
+  DisconnectReason
+} from "@whiskeysockets/baileys";
 import P from "pino";
 import qrcode from "qrcode-terminal";
 import { handleCommand } from "./commands.js";
 
 async function startBot() {
   console.log("🚀 Starting Presido Bot...");
-  const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
-  const sock = makeWASocket({ auth: state, logger: P({ level: "silent" }), printQRInTerminal: false });
+
+  const { state, saveCreds } =
+    await useMultiFileAuthState("auth_info_baileys");
+
+  const sock = makeWASocket({
+    auth: state,
+    logger: P({ level: "silent" }),
+    printQRInTerminal: false
+  });
+
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
@@ -14,28 +25,47 @@ async function startBot() {
       console.log("\n📱 Scan this QR code with WhatsApp:\n");
       qrcode.generate(qr, { small: true });
     }
-    if (connection === "open") console.log("✅ Presido Bot connected to WhatsApp.");
+
+    if (connection === "open") {
+      console.log("✅ Presido Bot connected to WhatsApp.");
+    }
+
     if (connection === "close") {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
+
       if (statusCode === DisconnectReason.loggedOut) {
         console.log("❌ WhatsApp session logged out.");
         return;
       }
+
       console.log("⚠️ Connection closed. Reconnecting...");
       startBot().catch(console.error);
     }
   });
 
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    try {
-      const message = messages[0];
-      if (!message?.message || message.key.fromMe) return;
-      const text = message.message.conversation || message.message.extendedTextMessage?.text || "";
-      if (!text.trim()) return;
-      console.log(`📩 ${text}`);
-      await handleCommand(sock, message, text.trim());
-    } catch (error) {
-      console.error("Message handling error:", error);
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (type !== "notify") return;
+
+    for (const message of messages) {
+      try {
+        if (!message?.message || message.key.fromMe) continue;
+
+        const text =
+          message.message.conversation ||
+          message.message.extendedTextMessage?.text ||
+          "";
+
+        if (!text.trim()) continue;
+
+        const source = message.key.remoteJid?.endsWith("@g.us")
+          ? "group"
+          : "private";
+
+        console.log(`📩 [${source}] ${text}`);
+        await handleCommand(sock, message, text.trim());
+      } catch (error) {
+        console.error("Message handling error:", error);
+      }
     }
   });
 }
