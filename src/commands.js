@@ -43,7 +43,7 @@ export async function handleCommand(sock, message, text) {
     case "menu":
     case "help":
       await sock.sendMessage(jid, {
-        image: { url: "https://raw.githubusercontent.com/presidojayden-ctrl/Presido-Bot/main/web/presido-logo.png" },
+        image: { url: "https://raw.githubusercontent.com/presidojayden-ctrl/Presido-Bot/main/web/presido-logo.svg" },
         caption: `╭━━━〔 🤖 ${config.botName} 〕━━━╮
 ┃
 ┃  👋 Welcome to *${config.botName}*
