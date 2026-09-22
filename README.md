@@ -17,7 +17,7 @@ Open `http://127.0.0.1:3000`, create an account, log in, and click **Connect Wha
 
 Passwords are stored as salted scrypt hashes, never plaintext. Dashboard authentication uses an HTTP-only session cookie. User data and WhatsApp credentials are excluded from Git.
 
-For public deployment, use HTTPS and set `COOKIE_SECURE=true`.
+For public deployment, use HTTPS. The server binds to `0.0.0.0` by default and automatically enables secure cookies when `NODE_ENV=production`; you can also set `COOKIE_SECURE=true`. Add rate limiting at the platform/reverse-proxy layer as well.
 
 ## Bot commands
 
