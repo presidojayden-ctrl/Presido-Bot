@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Presido Bot</title><style>body{font-family:system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 20px}input,button{padding:10px;font-size:16px;margin:4px 0}input{width:min(320px,90%);display:block}button{cursor:pointer}.card{border:1px solid #ddd;border-radius:12px;padding:20px;margin:16px 0}#qr img{width:280px;image-rendering:pixelated}.muted{color:#666}.error{color:#b00020}.success{color:#087f23}</style></head>
+<body><h1>🤖 Presido Bot</h1>
+<section id="auth" class="card"><h2>Account</h2><input id="username" placeholder="Username" autocomplete="username"><input id="password" type="password" placeholder="Password" autocomplete="current-password"><button onclick="login()">Login</button><button onclick="register()">Create account</button><p id="authMessage" class="muted"></p></section>
+<section id="app" class="card" hidden><h2>WhatsApp</h2><p>Logged in as <strong id="who"></strong></p><button onclick="connect()">Connect WhatsApp</button><button onclick="disconnect()">Disconnect</button><button onclick="logout()">Logout</button><p id="status" class="muted"></p><div id="qr"></div></section>
+<script>
+let timer;
+async function api(path, options={}) { const r=await fetch(path,{...options,headers:{"Content-Type":"application/json",...(options.headers||{})}}); const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||"Request failed."); return d; }
+function showApp(u){document.getElementById("auth").hidden=true;document.getElementById("app").hidden=false;document.getElementById("who").textContent=u;}
+function msg(m,e=false){const x=document.getElementById("authMessage");x.textContent=m;x.className=e?"error":"success";}
+async function register(){try{const username=document.getElementById("username").value.trim(),password=document.getElementById("password").value;await api("/api/auth/register",{method:"POST",body:JSON.stringify({username,password})});msg("Account created.");await login();}catch(e){msg(e.message,true);}}
+async function login(){try{const username=document.getElementById("username").value.trim(),password=document.getElementById("password").value,d=await api("/api/auth/login",{method:"POST",body:JSON.stringify({username,password})});showApp(d.username);await poll();}catch(e){msg(e.message,true);}}
+async function connect(){try{document.getElementById("status").textContent="Starting WhatsApp session...";await api("/api/whatsapp/connect",{method:"POST"});clearInterval(timer);timer=setInterval(poll,1500);await poll();}catch(e){document.getElementById("status").textContent=e.message;}}
+async function poll(){try{const d=await api("/api/whatsapp");document.getElementById("status").textContent="Status: "+d.status+(d.jid?" — "+d.jid:"");if(d.qr){document.getElementById("qr").innerHTML="<p>Scan with WhatsApp → Settings → Linked Devices → Link a Device.</p><img src='"+d.qr+"' alt='WhatsApp QR code'>";}else if(d.status==="connected"){document.getElementById("qr").innerHTML="<p class='success'>✅ WhatsApp connected.</p>";clearInterval(timer);}}catch(e){clearInterval(timer);}}
+async function disconnect(){await api("/api/whatsapp",{method:"DELETE"});clearInterval(timer);document.getElementById("qr").innerHTML="";document.getElementById("status").textContent="WhatsApp disconnected."}
+async function logout(){await api("/api/auth/logout",{method:"POST"}).catch(()=>{});clearInterval(timer);document.getElementById("app").hidden=true;document.getElementById("auth").hidden=false;document.getElementById("password").value="";}
+async function checkLogin(){try{const d=await api("/api/auth/me");showApp(d.username);await poll();}catch{}}
+checkLogin();
+</script></body></html>
