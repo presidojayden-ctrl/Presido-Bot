@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import QRCode from "qrcode";
 import { handleCommand } from "./commands.js";
+import { maybeSendAway } from "./away.js";
 
 const sessions = new Map();
 const reconnectTimers = new Map();
@@ -36,7 +37,7 @@ export async function startSession(userId, phoneNumber) {
 
   const digits = String(phoneNumber || "").replace(/\D/g, "");
   if (!/^\d{8,15}$/.test(digits)) throw new Error("Enter a valid WhatsApp number with country code, digits only.");
-  
+
   await mkdir(getSessionPath(userId), { recursive: true });
   const { state, saveCreds } = await useMultiFileAuthState(getSessionPath(userId));
   const session = { userId, status: "connecting", pairingCode: null, qrCode: null, jid: null, sock: null, pairingRequested: false };
@@ -59,7 +60,6 @@ export async function startSession(userId, phoneNumber) {
       } catch (error) {
         console.error(`[${userId}] QR generation failed:`, error);
       }
-
       if (!state.creds.registered && !session.pairingRequested) {
         session.pairingRequested = true;
         try {
@@ -128,8 +128,14 @@ export async function startSession(userId, phoneNumber) {
         if (!text.trim()) continue;
         const source = message.key.remoteJid?.endsWith("@g.us") ? "group" : "private";
         console.log(`📩 [${userId}] [${source}] ${text}`);
+
+        const awayReplied = await maybeSendAway(userId, sock, message, text.trim());
+        if (awayReplied) continue;
+
         await handleCommand(sock, message, text.trim());
-      } catch (error) { console.error(`[${userId}] Message handling error:`, error); }
+      } catch (error) {
+        console.error(`[${userId}] Message handling error:`, error);
+      }
     }
   });
 
