@@ -36,10 +36,12 @@ export async function startSession(userId, phoneNumber) {
   if (existing?.status === "connected" || existing?.status === "connecting" || existing?.status === "awaiting_pairing") return getSessionStatus(userId);
 
   const digits = String(phoneNumber || "").replace(/\D/g, "");
-  if (!/^\d{8,15}$/.test(digits)) throw new Error("Enter a valid WhatsApp number with country code, digits only.");
 
   await mkdir(getSessionPath(userId), { recursive: true });
   const { state, saveCreds } = await useMultiFileAuthState(getSessionPath(userId));
+  if (!state.creds.registered && !/^\d{8,15}$/.test(digits)) {
+    throw new Error("Enter a valid WhatsApp number with country code, digits only.");
+  }
   const session = { userId, status: "connecting", pairingCode: null, qrCode: null, jid: null, sock: null, pairingRequested: false };
   sessions.set(userId, session);
 
