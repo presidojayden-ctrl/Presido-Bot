@@ -6,7 +6,14 @@ export const config = {
   ]
 };
 
-export const isOwner = (jid) => {
-  const number = jid?.split("@")[0]?.split(":")[0];
-  return Boolean(number && config.owners.includes(number));
+export const normalizeJidNumber = (jid) =>
+  jid?.split("@")[0]?.split(":")[0] || "";
+
+export const isOwner = (jid, connectedOwnerJid = null) => {
+  const number = normalizeJidNumber(jid);
+  const connectedOwner = normalizeJidNumber(connectedOwnerJid);
+  return Boolean(
+    number &&
+    ((connectedOwner && number === connectedOwner) || config.owners.includes(number))
+  );
 };
