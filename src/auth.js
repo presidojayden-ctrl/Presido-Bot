@@ -51,11 +51,14 @@ export async function registerUser(username, password) {
 export async function loginUser(username, password) {
   username = String(username || "").trim();
   const users = await loadUsers();
-  const user = users[username];
+  const exactUser = users[username];
+  const matchedKey = exactUser ? username : Object.keys(users).find((key) => key.toLowerCase() === username.toLowerCase());
+  const user = exactUser || (matchedKey ? users[matchedKey] : null);
   if (!user || !(await verifyPassword(password, user.passwordHash))) throw new Error("Invalid username or password.");
   const token = randomBytes(32).toString("hex");
-  sessions.set(token, username);
-  return { username, token };
+  const canonicalUsername = user.username;
+  sessions.set(token, canonicalUsername);
+  return { username: canonicalUsername, token };
 }
 
 export function getUserFromToken(token) { return token ? sessions.get(token) || null : null; }
