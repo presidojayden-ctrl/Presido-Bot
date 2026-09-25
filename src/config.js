@@ -1,6 +1,11 @@
 export const config = {
   botName: "Presido Bot",
-  prefix: "!",
+  version: "1.2.0",
+  prefix: "?",
+  prefixes: ["?", "!"],
+  website: "https://presidobot.netlify.app",
+  channel: process.env.PRESIDO_CHANNEL_URL || "Not configured yet",
+  logo: "https://raw.githubusercontent.com/presidojayden-ctrl/Presido-Bot/main/web/presido-logo.svg",
   owners: [
     "234XXXXXXXXXX"
   ]
