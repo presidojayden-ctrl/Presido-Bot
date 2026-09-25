@@ -1,6 +1,7 @@
 import { config, isOwner } from "./config.js";
 import { getAwaySettings, updateAwaySettings } from "./away.js";
 import { playTrack, musicHelp } from "./music.js";
+import { presidoLogo } from "./logo.js";
 
 const getSenderJid = (message) =>
   message.key.participant || message.key.remoteJid;
@@ -76,7 +77,7 @@ async function sendMenu(sock, jid, message) {
   const caption = menuText();
   try {
     await sock.sendMessage(jid, {
-      image: { url: config.logo },
+      image: presidoLogo,
       caption
     }, { quoted: message });
   } catch (error) {
