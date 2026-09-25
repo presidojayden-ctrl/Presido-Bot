@@ -18,6 +18,10 @@ async function saveUsers(users) {
   await writeFile(USERS_FILE, JSON.stringify(users, null, 2), { mode: 0o600 });
 }
 
+function normalizeUsername(username) {
+  return String(username || "").trim().replace(/\\s+/g, "_");
+}
+
 function validateCredentials(username, password) {
   if (!/^[a-zA-Z0-9_-]{3,32}$/.test(username)) throw new Error("Username must be 3-32 characters and use only letters, numbers, hyphens or underscores.");
   if (typeof password !== "string" || password.length < 8 || password.length > 128) throw new Error("Password must be 8-128 characters.");
@@ -39,7 +43,7 @@ async function verifyPassword(password, storedHash) {
 }
 
 export async function registerUser(username, password) {
-  username = String(username || "").trim();
+  username = normalizeUsername(username);
   validateCredentials(username, password);
   const users = await loadUsers();
   if (users[username]) throw new Error("Username is already registered.");
@@ -49,7 +53,7 @@ export async function registerUser(username, password) {
 }
 
 export async function loginUser(username, password) {
-  username = String(username || "").trim();
+  username = normalizeUsername(username);
   const users = await loadUsers();
   const exactUser = users[username];
   const matchedKey = exactUser ? username : Object.keys(users).find((key) => key.toLowerCase() === username.toLowerCase());
