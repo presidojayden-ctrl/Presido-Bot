@@ -35,11 +35,62 @@ Message:
 “${settings.message}”`;
 }
 
+function menuText() {
+  return `🤖 *${config.botName}*
+
+━━━━━━━━━━━━━━━━━━━━
+🌐 *Website:* ${config.website}
+📢 *Channel:* ${config.channel}
+⚙️ *Mode:* Personal assistant
+🧩 *Version:* ${config.version}
+━━━━━━━━━━━━━━━━━━━━
+
+📌 *ALL COMMANDS*
+
+*General*
+• ?ping — Check if Presido is online
+• ?menu — Show this menu
+• ?help — Show this menu
+• ?play <song> — Play/send music
+
+*Away Mode*
+• ?away on — Turn auto-replies on
+• ?away off — Turn auto-replies off
+• ?away status — Show Away Mode settings
+• ?away message <text> — Change the reply
+• ?away groups on/off — Group replies
+• ?away days <number> — Quiet contact window
+• ?away cooldown <hours> — Reply cooldown
+
+*Admin*
+• ?groupinfo — Show group information
+• ?admincheck — Check your group admin status
+
+*Owner*
+• ?owner — Check whether you are Presido's owner
+
+💚 *${config.botName} is online and ready.*`;
+}
+
+async function sendMenu(sock, jid, message) {
+  const caption = menuText();
+  try {
+    await sock.sendMessage(jid, {
+      image: { url: config.logo },
+      caption
+    }, { quoted: message });
+  } catch (error) {
+    console.error("Menu logo delivery failed; sending text menu:", error);
+    await sock.sendMessage(jid, { text: caption }, { quoted: message });
+  }
+}
+
 export async function handleCommand(sock, message, text) {
   const jid = message.key.remoteJid;
-  if (!text.startsWith(config.prefix)) return;
+  const prefix = config.prefixes.find((candidate) => text.startsWith(candidate));
+  if (!prefix) return;
 
-  const args = text.slice(config.prefix.length).trim().split(/\s+/);
+  const args = text.slice(prefix.length).trim().split(/\s+/);
   const command = args.shift()?.toLowerCase();
   const senderJid = getSenderJid(message);
   const owner = isOwner(senderJid, sock.user?.id);
@@ -55,46 +106,7 @@ export async function handleCommand(sock, message, text) {
 
     case "menu":
     case "help":
-      await sock.sendMessage(jid, {
-        image: { url: "https://raw.githubusercontent.com/presidojayden-ctrl/Presido-Bot/main/web/presido-logo.svg" },
-        caption: `╭━━━〔 🤖 ${config.botName} 〕━━━╮
-┃
-┃  👋 Welcome to *${config.botName}*
-┃  Your WhatsApp automation assistant.
-┃
-┃  🌐 Website
-┃  https://presidobot.netlify.app
-┃
-┃  ⚙️ Mode: Personal assistant
-┃  🧩 Version: 1.2.0
-┃
-╰━━━━━━━━━━━━━━━━━━━━━━╯
-
-📌 *Commands*
-
-General
-• !ping — Check if Presido is online
-• !menu — Show this menu
-• !play <song> — Play/send music
-
-Away Mode
-• !away on — Turn auto-replies on
-• !away off — Turn auto-replies off
-• !away status — Show Away Mode settings
-• !away message <text> — Change the reply
-• !away groups on/off — Group replies
-• !away days <number> — Quiet contact window
-• !away cooldown <hours> — Reply cooldown
-
-Admin
-• !groupinfo — Show group information
-• !admincheck — Check your group admin status
-
-Owner
-• !owner — Check whether you are Presido's owner
-
-💚 Powered by ${config.botName}`
-      }, { quoted: message });
+      await sendMenu(sock, jid, message);
       break;
 
     case "play":
@@ -117,29 +129,29 @@ Owner
       }
       if (action === "message") {
         const messageText = args.join(" ").trim();
-        if (!messageText) return reply("Usage: !away message <your message>");
+        if (!messageText) return reply(`Usage: ${config.prefix}away message <your message>`);
         const updated = await updateAwaySettings(sock.user?.id || senderJid, { message: messageText });
         return reply(`✅ Away message updated:\n\n“${updated.message}”`);
       }
       if (action === "groups") {
         const value = args.shift()?.toLowerCase();
-        if (!["on", "off"].includes(value)) return reply("Usage: !away groups on/off");
+        if (!["on", "off"].includes(value)) return reply(`Usage: ${config.prefix}away groups on/off`);
         const updated = await updateAwaySettings(sock.user?.id || senderJid, { groupsEnabled: value === "on" });
         return reply(`👥 Group Away Mode is now *${updated.groupsEnabled ? "ON" : "OFF"}*.`);
       }
       if (action === "days") {
         const days = Number(args.shift());
-        if (!Number.isFinite(days) || days < 0 || days > 365) return reply("Usage: !away days <0-365>");
+        if (!Number.isFinite(days) || days < 0 || days > 365) return reply(`Usage: ${config.prefix}away days <0-365>`);
         const updated = await updateAwaySettings(sock.user?.id || senderJid, { quietDays: days });
         return reply(`🕒 New-contact quiet window: *${updated.quietDays} days*.`);
       }
       if (action === "cooldown") {
         const hours = Number(args.shift());
-        if (!Number.isFinite(hours) || hours < 1 || hours > 168) return reply("Usage: !away cooldown <1-168>");
+        if (!Number.isFinite(hours) || hours < 1 || hours > 168) return reply(`Usage: ${config.prefix}away cooldown <1-168>`);
         const updated = await updateAwaySettings(sock.user?.id || senderJid, { cooldownHours: hours });
         return reply(`⏱️ Away reply cooldown: *${updated.cooldownHours} hours*.`);
       }
-      return reply("Usage: !away on/off/status/message/groups/days/cooldown");
+      return reply(`Usage: ${config.prefix}away on/off/status/message/groups/days/cooldown`);
     }
 
     case "owner":
@@ -170,6 +182,6 @@ Group ID: ${jid}`);
     default:
       await reply(`❌ Unknown command: ${command}
 
-Type !menu to see available commands.`);
+Type ${config.prefix}menu to see available commands.`);
   }
 }
