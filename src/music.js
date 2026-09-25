@@ -4,7 +4,7 @@ export async function playTrack(sock, jid, query, quotedMessage) {
   const clientId = process.env.JAMENDO_CLIENT_ID;
   if (!clientId) {
     await sock.sendMessage(jid, {
-      text: "🎵 Music is ready, but Presido still needs a music provider key. Add JAMENDO_CLIENT_ID in Railway, then !play will work."
+      text: "🎵 Music is ready, but Presido still needs a music provider key. Add JAMENDO_CLIENT_ID in Railway, then ?play will work."
     }, { quoted: quotedMessage });
     return;
   }
@@ -41,5 +41,5 @@ export async function playTrack(sock, jid, query, quotedMessage) {
 }
 
 export function musicHelp() {
-  return `🎵 *Presido Music*\n\n!play <song or artist> — find and send a track\n!play <another song> — send another track\n\nMusic playback is based on the configured licensed/open music catalog.`;
+  return `🎵 *Presido Music*\n\n?play <song or artist> — find and send a track\n?play <another song> — send another track\n\nMusic playback is based on the configured licensed/open music catalog.`;
 }
